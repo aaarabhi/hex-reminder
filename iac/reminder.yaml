@@ -1,0 +1,123 @@
+Resources:
+  reminderTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: reminderId
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: reminderId
+          KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      TimeToLiveSpecification:
+        AttributeName: expiration
+        Enabled: true
+  reminderApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub
+        - ${ResourceName} From Stack ${AWS::StackName}
+        - ResourceName: reminderApi
+      StageName: Prod
+      DefinitionBody:
+        openapi: '3.0'
+        info: {}
+        paths:
+          /reminder/{userId}:
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${reminderFunction.Arn}/invocations
+              responses: {}
+          /reminder:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${reminderFunction.Arn}/invocations
+              responses: {}
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${reminderFunction.Arn}/invocations
+              responses: {}
+      EndpointConfiguration: REGIONAL
+      TracingEnabled: true
+      Cors:
+        MaxAge: 5
+  reminderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: reminderFunction
+      CodeUri: src/Function
+      Handler: dist/reminder.handler
+      Runtime: nodejs20.x
+      MemorySize: 256
+      Timeout: 30
+      Tracing: Active
+      Events:
+        reminderApiGETreminderuserId:
+          Type: Api
+          Properties:
+            Path: /reminder/{userId}
+            Method: GET
+            RestApiId: !Ref reminderApi
+        reminderApiPOSTreminder:
+          Type: Api
+          Properties:
+            Path: /reminder
+            Method: POST
+            RestApiId: !Ref reminderApi
+        reminderApiGETreminder:
+          Type: Api
+          Properties:
+            Path: /reminder
+            Method: GET
+            RestApiId: !Ref reminderApi
+      Environment:
+        Variables:
+          REMINDERTABLE_TABLE_NAME: !Ref reminderTable
+          REMINDERTABLE_TABLE_ARN: !GetAtt reminderTable.Arn
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref reminderTable
+  reminderFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${reminderFunction}
+  reminderStream:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: reminderStream
+      CodeUri: src/Function2
+      Handler: index.handler
+      Runtime: nodejs20.x
+      MemorySize: 256
+      Timeout: 30
+      Tracing: Active
+      Events:
+        reminderTable:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt reminderTable.StreamArn
+            StartingPosition: TRIM_HORIZON
+            BatchSize: 1
+  reminderStreamLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${reminderStream}
+Transform: AWS::Serverless-2016-10-31
